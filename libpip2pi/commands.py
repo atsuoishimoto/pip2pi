@@ -30,35 +30,8 @@ def try_int(x):
     except ValueError:
         return x
 
-
-try:
-    pip_pkg_info = pkg_resources.get_distribution('pip')
-    pip_version = tuple(try_int(x) for x in pip_pkg_info.version.split("."))
-    has_pip = True
-except ImportError:
-    pip_version = None
-    has_pip = False
-    pip_download_command = ''
-    pip_no_binary_command = ''
-
-
-if pip_version:
-    if pip_version >= (10, 0, 0):
-        from pip._internal import main as pip_main
-        pip_download_command = 'download --dest'
-        pip_no_binary_command = '--no-binary=:all:'
-    elif pip_version >= (8, 0, 0):
-        from pip import main as pip_main
-        pip_download_command = 'download --dest'
-        pip_no_binary_command = '--no-binary=:all:'
-    elif pip_version >= (7, 0, 0):
-        from pip import main as pip_main
-        pip_download_command = 'install --download'
-        pip_no_binary_command = '--no-binary=:all:'
-    else:
-        from pip import main as pip_main
-        pip_download_command = 'install --download'
-        pip_no_binary_command = '--no-use-wheel'
+pip_download_command = 'download --dest'
+pip_no_binary_command = '--no-binary=:all:'
 
 class PipError(Exception):
     pass
@@ -105,10 +78,7 @@ class InvalidFilePackageName(ValueError):
         msg += ")"
         super(InvalidFilePackageName, self).__init__(msg)
 
-def egg_to_package(file):
-    warnings.warn("egg_to_package is deprecated; use file_to_package.",
-                  stacklevel=1)
-    return file_to_package(file)
+
 
 def file_to_package(file, basedir=None):
     """ Returns the package name for a given file, or raises an
@@ -168,28 +138,7 @@ def file_to_package(file, basedir=None):
 
 
 def pip_run_command(pip_args):
-    if not has_pip:
-        print("===== WARNING =====")
-        print("Cannot `import pip` - falling back to the pip executable.")
-        print("This will be deprecated in a future release.")
-        print("Please open an issue if this will be a problem: "
-              "https://github.com/wolever/pip2pi/issues")
-        print("===================")
-        check_call(["pip"] + pip_args)
-        return
-
-    if pip_version < (1, 1):
-        raise RuntimeError("pip >= 1.1 required, but %s is installed"
-                           %(pip_version, ))
-    # TODO: Remove this once
-    # pip._internal.req.req_tracker.RequirementTracker.cleanup() does it
-    # already.
-    os.environ.pop('PIP_REQ_TRACKER', None)
-    res = pip_main(pip_args)
-    if res != 0:
-        raise PipError("pip failed with status %s while running: %s"
-                       %(res, pip_args))
-
+    check_call(["pip"] + pip_args)
 
 OS_HAS_SYMLINK = hasattr(os, "symlink")
 
@@ -439,66 +388,15 @@ def pip2tgz(argv=sys.argv):
     pkg_file_set = lambda: set(globall(full_glob_paths))
     old_pkgs = pkg_file_set()
 
-    if pip_version >= (8, 0, 0):
-        pip_run_command(pip_download_command.split() + [outdir] + argv[2:])
-    else:
-        pip_run_command(pip_download_command.split() + [outdir] + argv[2:])
+    pip_run_command(pip_download_command.split() + [outdir] + argv[2:])
 
     os.chdir(outdir)
     new_pkgs = pkg_file_set() - old_pkgs
     new_wheels = [ f for f in new_pkgs if f.endswith(".whl") ]
-    res = handle_new_wheels(outdir, new_wheels)
-    if res:
-        return res
-
     num_pkgs = len(pkg_file_set() - old_pkgs)
     print("\nDone. %s new archives currently saved in %r." %(num_pkgs, argv[1]))
     return 0
 
-
-def handle_new_wheels(outdir, new_wheels):
-    """ Makes sure that, if wheel files are downloaded, their dependencies are
-        correctly handled.
-
-        This is necessary because ``pip install -d ...`` was broken
-        pre-1.5.3[0].
-
-        [0]: https://github.com/pypa/pip/issues/1617
-        """
-    if not new_wheels:
-        return 0
-
-    if pip_version >= (1, 5, 3):
-        return 0
-
-    print("")
-    print("!" * 80)
-
-    if not has_wheel:
-        warn_wheel()
-        # Remove the wheel files so that they will be re-downloaded and
-        # their dependencies installed next time around
-        for f in new_wheels:
-            os.unlink(f)
-        return 1
-
-    print(dedent("""
-        WARNING: Your version of pip (%s) doesn't correctly support wheel
-        files. I'll do my best to work around that for now, but if possible
-        you should upgrade to at least 1.5.3.
-    """)) %(pip_version, )
-
-    print("!" * 80)
-    print
-
-    for new_pkg in new_wheels:
-        pkg_file_basedir = os.path.abspath(os.path.dirname(new_pkg))
-        pkg_name, _ = file_to_package(new_pkg)
-        pip_run_command([
-            '-q', 'wheel', '-w', outdir,
-            '--find-links', pkg_file_basedir,
-            pkg_name,
-        ])
 
 WINDOWS_PATH_RE = re.compile(r"^[A-Za-z]:\\")
 
