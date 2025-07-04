@@ -34,7 +34,7 @@ setup(
         ],
     },
     install_requires=[
-        "pip>=1.1",
+        "pip>=10.0.0",
     ],
     license="BSD",
     classifiers=[ x.strip() for x in """
