@@ -8,7 +8,6 @@ import warnings
 import textwrap
 import functools
 from subprocess import check_call
-import pkg_resources
 import glob
 import optparse
 
@@ -79,6 +78,37 @@ class InvalidFilePackageName(ValueError):
         super(InvalidFilePackageName, self).__init__(msg)
 
 
+def safe_name(name):
+    """Convert an arbitrary string to a standard distribution name
+
+    Any runs of non-alphanumeric/. characters are replaced with a single '-'.
+    Copied from pkg_resources.
+    """
+    return re.sub('[^A-Za-z0-9.]+', '-', name)
+
+# Copied from pkg_resources.
+EGG_NAME = re.compile(
+    r"""
+    (?P<name>[^-]+) (
+        -(?P<ver>[^-]+) (
+            -py(?P<pyver>[^-]+) (
+                -(?P<plat>.+)
+            )?
+        )?
+    )?
+    """,
+    re.VERBOSE | re.IGNORECASE,
+).match
+
+
+def egg_project_name(filename):
+    project_name, version, py_version, platform = [None] * 4
+    basename, ext = os.path.splitext(filename)
+    match = EGG_NAME(basename)
+    if match:
+        project_name = match.group("name")
+    return safe_name(project_name or 'Unknown')
+
 
 def file_to_package(file, basedir=None):
     """ Returns the package name for a given file, or raises an
@@ -113,23 +143,22 @@ def file_to_package(file, basedir=None):
     file = os.path.basename(file)
     file_ext = os.path.splitext(file)[1].lower()
     if file_ext == ".egg":
-        dist = pkg_resources.Distribution.from_location(None, file)
-        name = dist.project_name
+        name = egg_project_name(file)
         split = (name, file[len(name)+1:])
         to_safe_name = lambda x: x
         to_safe_rest = lambda x: x
     elif file_ext == ".whl":
         bits = file.rsplit("-", 4)
         split = (bits[0], "-".join(bits[1:]))
-        to_safe_name = pkg_resources.safe_name
+        to_safe_name = safe_name
         to_safe_rest = lambda x: x
     else:
         match = re.search(r"(?P<pkg>.*?)-(?P<rest>\d+.*)", file)
         if not match:
             raise InvalidFilePackageName(file, basedir)
         split = (match.group("pkg"), match.group("rest"))
-        to_safe_name = pkg_resources.safe_name
-        to_safe_rest = pkg_resources.safe_name
+        to_safe_name = safe_name
+        to_safe_rest = safe_name
 
     if len(split) != 2 or not split[1]:
         raise InvalidFilePackageName(file, basedir)
