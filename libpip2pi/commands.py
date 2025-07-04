@@ -421,7 +421,6 @@ def pip2tgz(argv=sys.argv):
 
     os.chdir(outdir)
     new_pkgs = pkg_file_set() - old_pkgs
-    new_wheels = [ f for f in new_pkgs if f.endswith(".whl") ]
     num_pkgs = len(pkg_file_set() - old_pkgs)
     print("\nDone. %s new archives currently saved in %r." %(num_pkgs, argv[1]))
     return 0
